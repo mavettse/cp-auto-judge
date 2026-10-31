@@ -107,9 +107,57 @@ if [ "$AC_MODE" -eq 0 ]; then
 fi
 
 
+# ---------------------------
+# COMPILAÇÃO E LAÇOS DE TESTE
+# ---------------------------
+echo "Iniciando a compilação do arquivo: $CPP_FILE..."
 
+g++ -Wall -O2 "$CPP_FILE" -o exec_file || {
+	echo "CE (Compilation Error)" >&2
+	exit 1
+}
 
+echo "Rodando testes locais..."
 
+# converte o tempo de ms para seg (coloca um tempo minimo de 1 seg  senao nao funciona kkkk
+TIME_SEC=$(( TIME_LIMIT/1000 ))
+if [ "$TIME_SEC" -eq 0 ]; then
+	TIME_SEC=1
+fi
+
+# itera sobre todos os ficheiros de entrada
+for in_file in in*.txt; do
+	# remove o prefixo in e o sufixo .txt pra pegar só o numero
+	test_num="${in_file#in}"
+	test_num="${test_num%.txt}"
+
+	out_file="out${test_num}.txt"
+	my_out="my_out${test_num}.txt"
+
+	# executa o binário controlando o tempo e armazena a saída
+	timeout "${TIME_SEC}s" ./exec_file < "$in_file" > "$my_out"
+
+	# pega o código de sáida do binário ou do timeout
+	exit_code="$?"
+
+	echo -n "Teste $test_num: "
+
+	if [ "$exit_code" -eq 124 ]; then
+		echo "TLE (Time Limit Exceeded"
+	elif [ "$exit_code" -ne 0 ]; then
+		echo "RTE (Runtime Error"
+	else
+		# usa a flag -w pra ignorar diferencas de espacos em branco
+		if diff -w "$out_file" "$my_out" > /dev/null 2>&1; then
+			echo "Passou (AC local)"
+		else
+			echo "WA (Wrong Answer)"
+		fi
+	fi
+done
+
+# remove os arquivos criados
+rm -f exec_file my_out*.txt out*.txt in*.txt
 
 
 
