@@ -25,11 +25,10 @@ register_log() {
 	local base_name=$(basename $CPP_FILE)
 
 	if [ -n "$detail" ]; then
-		echo "$cur_date, $base_name, $status, $detail" >> "$LOG_FILE"
+		echo "$cur_date, $base_name - $status: $detail" >> "$LOG_FILE"
 	else 		
-		echo "$	cur_date, $base_name, $status" >> "$LOG_FILE"
+		echo "$	cur_date, $base_name - $status" >> "$LOG_FILE"
 	fi
-
 
 	echo "Registro salvo em $LOG_FILE"
 }
@@ -81,8 +80,9 @@ if [ "$AC_MODE" -eq 1 ]; then
 	# O NOME DO PROBLEMA ERA PARA ESTAR AO LADO DO ID DELE!!!!
 	git commit "$CPP_FILE" -m "$(basename "$CPP_FILE")"
 
-	echo "Código inserido no repositório com sucesso!"
-	exit 1
+	register_log "AC (Accepted)" "Submissao direta"
+	echo "Código inserido no repositório e registrado no log."
+	exit 0
 fi
 
 
@@ -146,6 +146,7 @@ echo "Iniciando a compilação do arquivo: $CPP_FILE..."
 
 g++ -Wall -O2 "$CPP_FILE" -o exec_file || {
 	echo "CE (Compilation Error)" >&2
+	register_log "CE" "Erro de Compilação"
 	exit 1
 }
 
@@ -174,19 +175,32 @@ for in_file in in*.txt; do
 
 	echo -n "Teste $test_num: "
 
+	FULL_PASS=1
+
 	if [ "$exit_code" -eq 124 ]; then
-		echo "TLE (Time Limit Exceeded"
+		echo "TLE (Time Limit Exceeded)"
+		register_log "TLE" "Falha no Teste $test_num"
+		FULL_PASS=0
 	elif [ "$exit_code" -ne 0 ]; then
-		echo "RTE (Runtime Error"
+		echo "RTE (Runtime Error)"
+		register_log "RTE" "Falha no Teste $test_num"
+		FULL_PASS=0
+
 	else
 		# usa a flag -w pra ignorar diferencas de espacos em branco
 		if diff -w "$out_file" "$my_out" > /dev/null 2>&1; then
 			echo "Passou (AC local)"
 		else
 			echo "WA (Wrong Answer)"
+			register_log "WA" "Falha no Teste $test_num"
+			FULL_PASS=0
 		fi
 	fi
 done
+
+if [ "$FULL_PASS" -eq 1 ]; then
+	register_log "AC Local" "Passou em todos os testes" 
+fi
 
 # remove os arquivos criados
 rm -f exec_file my_out*.txt out*.txt in*.txt
