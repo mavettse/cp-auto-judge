@@ -74,10 +74,9 @@ if [ "$AC_MODE" -eq 0 ]; then
 # PARSING DOS DADOS
 # -----------------
 	PROBLEM_NAME=$(echo -n $JSON_FILE | sed -n 's/.*name":"\([^"]*\).*/\1/p')
-	PROBLEM_ID=$(echo -n $JSON_FILE | sed 's/,/\n/g' | grep '"url":"' | sed -n 's/.*\/\([0-9]*\).*/\1/p')
 	TIME_LIMIT=$(echo -n $JSON_FILE | sed 's/,/\n/g' | grep '"timeLimit":' | sed 's/"timeLimit":\([0-9]*\)/\1/')
 
-	echo "Problema: $PROBLEM_ID - $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms"
+	echo "Problema: $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms"
 
 	rm -f in*.txt out*.txt
 
@@ -160,9 +159,9 @@ done
 rm -f exec_file my_out*.txt out*.txt in*.txt
 
 
-
-
-
+# --------------------
+# IMPLEMENTAÇÃO NO GIT
+# --------------------
 
 
 
