@@ -13,6 +13,7 @@ declare -r LOG_FILE="log.csv"
 AC_MODE=0
 CPP_FILE=""
 
+
 # -------------------------------
 # VALIDAÇÃO E PARSE DE PARÂMETROS
 # -------------------------------
@@ -49,18 +50,18 @@ if [ ! -f "$LOG_FILE" ]; then
 	touch "$LOG_FILE"
 fi
 
+
 # ------------------------------------------
 # ABERTURA DA PORTA PARA RECEBIMENTO DO JSON
 # ------------------------------------------
-
 if [ "$AC_MODE" -eq 0 ]; then
 	echo "Aguardando o envio do Competitive Companion na porta $NC_PORT..."
 
 	# suprime a entrada, guardando somente a partir do { (onde começa o json)
 # REATIVAR NOVAMENTE!!!!
 # 	JSON_FILE="$(nc -l -p $NC_PORT | sed -n '/{/ p')"
-# EXCLUIR LINHA ABAIXO
-	JSON_FILE="$(cat "json_file")"
+# EXCLUIR LINHA ABAIXO QUANDO REATIVAR A DE CIMA
+	JSON_FILE="$(cat "json_file.txt")"
 
 	# checa se a entrada não capturou nada da porta
 	if [ -z "$JSON_FILE" ]; then
@@ -68,6 +69,10 @@ if [ "$AC_MODE" -eq 0 ]; then
 		exit 1
 	fi
 
+
+# -----------------
+# PARSING DOS DADOS
+# -----------------
 	PROBLEM_NAME=$(echo -n $JSON_FILE | sed -n 's/.*name":"\([^"]*\).*/\1/p')
 	PROBLEM_ID=$(echo -n $JSON_FILE | sed 's/,/\n/g' | grep '"url":"' | sed -n 's/.*\/\([0-9]*\).*/\1/p')
 	TIME_LIMIT=$(echo -n $JSON_FILE | sed 's/,/\n/g' | grep '"timeLimit":' | sed 's/"timeLimit":\([0-9]*\)/\1/')
@@ -96,7 +101,6 @@ if [ "$AC_MODE" -eq 0 ]; then
 		printf "%s", in_str > file_in
 		printf "%s", out_str > file_out
 	}'
-
 	# conta quantos casos testes foram gerados
 	TESTS_COUNT=$(ls -1 in*.txt | wc -l)
 	echo "Foram gerados $TESTS_COUNT casos de teste locais a partir da plataforma"
