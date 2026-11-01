@@ -22,6 +22,8 @@ BOLD_GREEN='\033[1;32m'
 GRAY='\033[0;90m'
 RESET='\033[0m'
 
+
+
 # -------------------------
 # FUNÇÃO DE INSERÇÃO DO LOG
 # -------------------------
@@ -43,7 +45,13 @@ register_log() {
 # FUNÇÃO PARA REMOVER TODOS OS ARQUIVOS TEMPORARIOS GERADOS
 # ---------------------------------------------------------
 remove() {
+	local more="${1:-}"
+	
 	rm -f exec_file my_out*.txt out*.txt in*.txt 2>/dev/null
+
+	if [ -n "$more" ]; then
+		rm -f "$more" 2>/dev/null
+	fi
 }
 
 
@@ -112,7 +120,7 @@ if [ ! -f "$CACHE_FILE" ]; then
 	# guarda no arquivo de cache somente a partir do { (onde começa o json) 
 	sed -n '/^{/ p' raw_json.tmp > "$CACHE_FILE"
 
-	rm -f raw_json.tmp
+	remove raw_json.tmp
 else
 	echo -e "${BLUE}Cache encontrado para $(basename "$CPP_FILE"). Pulando captura da porta...${RESET}"
 fi
@@ -121,7 +129,7 @@ JSON_FILE=$(cat "$CACHE_FILE")
 
 if [ -z "$JSON_FILE" ]; then
 	echo -e "${RED}Error: Nenhum dado válido capturado${RESET}" >&2
-	rm -f "$CACHE_FILE"
+	remove "$CACHE_FILE"
 	exit 1
 fi
 
@@ -149,7 +157,7 @@ fi
 # ---------------------------
 # PARSING DOS DADOS RESTANTES
 # ---------------------------
-TIME_LIMIT=$(echo -n ""$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | sed 's/"timeLimit":\([0-9]*\)/\1/')
+TIME_LIMIT=$(echo -n "$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | sed 's/"timeLimit":\([0-9]*\)/\1/')
 
 echo -e "${WHITE}Problema: $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms${RESET}"
 
@@ -185,14 +193,15 @@ echo -e "${CYAN}Foram gerados $TESTS_COUNT casos de teste locais a partir da pla
 # ---------------------------
 echo -e "${YELLOW}Iniciando a compilação do arquivo: $CPP_FILE...${RESET}"
 
-# manda o erro de compilação (se houver) para o arquivo temporário ce_error.tmp
-g++ -Wall -O2 "$CPP_FILE" -o exec_file 2> ce_error.tmp || { 
+# manda o erro de compilação (se houver) para o arquivo temporário comp_error.tmp
+g++ -Wall -O2 "$CPP_FILE" -o exec_file 2> comp_error.tmp || { 
 	echo -e "${RED}CE (Compilation Error)${RESET}" >&2
-	ERRO_COMPILACAO=$(head -n 1 ce_error.tmp | tr ',' ';')
+	ERRO_COMPILACAO=$(head -n 1 comp_error.tmp | tr ',' ';')
 	register_log "CE" "Erro: $ERRO_COMPILACAO"
-	remove
+	remove comp_error.tmp
 	exit 1
 }
+rm -f comp_error.tmp
 
 echo -e "${YELLOW}Rodando testes locais...${RESET}"
 
