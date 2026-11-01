@@ -209,9 +209,11 @@ TIME_LIMIT=$(echo -n "$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | sed '
 echo -e "${WHITE}Problema: $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms${RESET}"
 
 # os comandos de dentro do awk não são interpretados pela bash
-echo "$JSON_FILE" | awk '
+printf '%s' "$JSON_FILE" | awk -v tmp_dir="$TMP_DIR" '
+
 # usa o RS para separar os testes e o FS para separar a entrada e a saída de cada teste
 BEGIN { RS="\"input\":\""; FS="\",\"output\":\"" }
+
 NR > 1 {
 	in_str = $1
 	split ($2, arr, "\"")
@@ -222,15 +224,21 @@ NR > 1 {
 	gsub(/\\n/, "\n", out_str)
 
 	# define os nomes e redireciona as saídas para os ficheiros
-	# usa o printf para garantir que a saída terá a quebra de linha e não o caractere \n
-	file_in = "in" (NR-1) ".txt"
-	file_out = "out" (NR-1) ".txt"
+	file_in = "tmp_dir" "/in" (NR-1) ".txt"
+	file_out = "tmp_dir" "/out" (NR-1) ".txt"
+
+	# grava os conteúdos sem adicinoar uma quebra de linha extra
 	printf "%s", in_str > file_in
 	printf "%s", out_str > file_out
 }'
-# conta quantos casos testes foram gerados
-# para evitar encerramento do programa causado pelo pipefail quando não há casos de teste, o comando "true" é inserido como 'salva-guarda' do ls
-TESTS_COUNT=$( (ls -1 in*.txt 2>/dev/null || true ) | wc -l)
+
+# se a expansão não existir, expande pro vazio ao invés de para a string literal
+shopt -s nullglob
+
+# armazena os arquivos de entrada encontrados
+TEST_FILES=("$TMP_DIR"/in*.txt)
+# conta quantos casos de teste foram gerados
+TESTS_COUNT=${#TEST_FILES[@]}
 
 if [ "$TESTS_COUNT" -eq 0 ]; then
 	echo -e "${RED}Nenhum caso de teste foi gerado.${RESET}" >&2
