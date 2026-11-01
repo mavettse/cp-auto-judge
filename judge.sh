@@ -34,7 +34,7 @@ register_log() {
 
 	if [ -n "$detail" ]; then
 		echo "$cur_date,$base_name,$status,$detail" >> "$LOG_FILE"
-	else 		
+	else
 		echo "$cur_date,$base_name,$status" >> "$LOG_FILE"
 	fi
 }
@@ -45,7 +45,7 @@ register_log() {
 # ---------------------------------------------------------
 remove() {
 	local more="${1:-}"
-	
+
 	rm -f exec_file my_out*.txt out*.txt in*.txt 2>/dev/null
 
 	if [ -n "$more" ]; then
@@ -108,7 +108,7 @@ if [ ! -f "$CACHE_FILE" ]; then
 	loading='-\|/'
 	i=0
 
-	# se repete enquanto o nc não receber o json do competitive companion
+	# se repete enquanto o processo existir (enquanto não receber o json do competitive companion)
 	while kill -0 "$NC_PID" 2>/dev/null; do
 		i=$(( (i+1) % 4 ))
 		printf "\rAguardando envio do Competitive Companion na porta %s... %s"	"$NC_PORT" "${loading:$i:1}"
@@ -124,7 +124,7 @@ else
 	echo -e "${BLUE}Cache encontrado para $(basename "$CPP_FILE"). Pulando captura da porta...${RESET}"
 fi
 
-JSON_FILE=$(cat "$CACHE_FILE")
+JSON_FILE=$(< "$CACHE_FILE")
 
 if [ -z "$JSON_FILE" ]; then
 	echo -e "${RED}Error: Nenhum dado válido capturado${RESET}" >&2
@@ -136,8 +136,7 @@ fi
 # ---------------
 # PARSING DO NOME
 # ---------------
-PROBLEM_NAME=$(echo -n "$JSON_FILE" | sed -n 's/.*name":"\([^"]*\).*/\1/p')
-
+PROBLEM_NAME=$(echo "$JSON_FILE" | grep -o '"name":"[^"]*' | head -n 1 | sed 's/"name":"//')
 
 # --------------------
 # IMPLEMENTAÇÃO NO GIT
@@ -183,8 +182,16 @@ NR > 1 {
 	printf "%s", out_str > file_out
 }'
 # conta quantos casos testes foram gerados
-TESTS_COUNT=$(ls -1 in*.txt | wc -l)
-echo -e "${CYAN}Foram gerados $TESTS_COUNT casos de teste locais a partir da plataforma${RESET}"
+# para evitar encerramento do programa causado pelo pipefail quando não há casos de teste, o comando "true" é inserido como 'salva-guarda' do ls
+TESTS_COUNT=$( (ls -1 in*.txt 2>/dev/null || true ) | wc -l)
+
+if [ "$TESTS_COUNT" -eq 0 ]; then
+	echo -e "${RED}Nenhum caso de teste foi gerado.${RESET}" >&2
+	register_log "ERRO" "Nenhum caso de teste encontrado"
+	exit 1
+else
+	echo -e "${CYAN}Foram gerados $TESTS_COUNT casos de teste locais a partir da plataforma${RESET}"
+fi
 
 
 # ---------------------------
@@ -204,16 +211,17 @@ rm -f comp_error.tmp
 
 echo -e "${YELLOW}Rodando testes locais...${RESET}"
 
-# converte o tempo de ms para seg (coloca um tempo minimo de 1 seg  senao nao funciona kkkk
-TIME_SEC=$(( TIME_LIMIT/1000 ))
-if [ "$TIME_SEC" -eq 0 ]; then
-	TIME_SEC=1
-fi
+# converte o tempo de ms para seg com 3 casas decimais
+TIME_SEC=$(printf '%d.%03d' "$((TIME_LIMIT / 1000))" "$((TIME_LIMIT % 1000))")
 
 FULL_PASS=1
 
 # itera sobre todos os ficheiros de entrada
 for in_file in in*.txt; do
+	# se o arquivo não existir, interrompe o laço
+	# sem isso, se nao tiver nenhum arquivo de entrada, a shell nao vai expandir o in*.txt e vai tratar isso como o arquivo literal
+	[ -e "$in_file" ] || break
+
 	# remove o prefixo in e o sufixo .txt pra pegar só o numero
 	test_num="${in_file#in}"
 	test_num="${test_num%.txt}"
@@ -222,10 +230,14 @@ for in_file in in*.txt; do
 	my_out="my_out${test_num}.txt"
 
 	# executa o binário controlando o tempo e armazena a saída
-	timeout "${TIME_SEC}s" ./exec_file < "$in_file" > "$my_out"
-
-	# pega o código de sáida do binário ou do timeout
-	exit_code="$?"
+	# timeout dentro do condicional porque a flag -e fecha o programa se um processo retornar falha
+	# joga a eventual saída de erro do RTE no bit bucket
+	if timeout -k 1s "${TIME_SEC}s" ./exec_file < "$in_file" > "$my_out" 2> /dev/null; then
+		exit_code=0
+	else
+		# pega o código de saída do binário ou do terminal quando não dá RTE
+		exit_code="$?"
+	fi
 
 	echo -n "Teste $test_num: "
 
