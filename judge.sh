@@ -11,6 +11,7 @@ set -euo pipefail
 declare -i NC_PORT=10044
 declare -r LOG_FILE="log.csv"
 AC_MODE=0
+REFRESH=0
 CPP_FILE=""
 BLUE='\033[34m'
 RED='\033[1;31m'
@@ -40,25 +41,11 @@ register_log() {
 }
 
 
-# ---------------------------------------------------------
-# FUNÇÃO PARA REMOVER TODOS OS ARQUIVOS TEMPORARIOS GERADOS
-# ---------------------------------------------------------
-remove() {
-	local more="${1:-}"
-
-	rm -f exec_file my_out*.txt out*.txt in*.txt 2>/dev/null
-
-	if [ -n "$more" ]; then
-		rm -f "$more" 2>/dev/null
-	fi
-}
-
-
 # -------------------------------
 # VALIDAÇÃO E PARSE DE PARÂMETROS
 # -------------------------------
 if [ "$#" -eq 0 ]; then
-	echo -e "Uso: $0 [--ac] <caminho/para/arquivo.cpp>" >&2
+	echo -e "Uso: $0 [--ac] [--refresh] <caminho/para/arquivo.cpp>" >&2
 	exit 1
 fi
 
@@ -66,6 +53,10 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--ac)
 			AC_MODE=1
+			shift
+			;;
+		--refresh)
+			REFRESH=1
 			shift
 			;;
 		*.[cC][pP][pP])
@@ -91,15 +82,57 @@ if [ ! -f "$LOG_FILE" ]; then
 fi
 
 
+# -------------------------------
+# CRIAÇÃO DO DIRETÓRIO TEMPORÁRIO
+# -------------------------------
+# cria um diretório exclusivo para os arquivos temporários
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/judge.XXXXXX")
+
+# define os caminhos dos arquivos temporários
+EXEC_FILE="$TMP_DIR/exec_file"
+RAW_JSON="$TMP_DIR/raw_json.tmp"
+HTTP_RESPONSE="$TMP_DIR/http_response.tmp"
+COMP_ERROR="$TMP_DIR/comp_error.tmp"
+
+# variável para identificar o processo do nc 
+NC_PID=""
+
+# função para limpar arquivos sos temporários
+cleanup(){
+	# encerra o nc se o programa for interrompido durante a captura
+	if [ -n "$NC_PID" ]; then
+		kill "$NC_PID" 2>/dev/null || true
+		# aguarda a conclusão do processo em segundo plano
+		wait "$NC_PID" 2>/dev/null || true
+	fi
+
+	# 	 o diretório temporario
+	rm -rf -- "$TMP_DIR" 2>/dev/null || true
+}
+
+# executa a limpeza ao finalizar o script e em interrupções
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+
 # ----------------------------------
 # CAPTURA DO JSON E CRIAÇÃO DE CACHE
 # ----------------------------------
 CACHE_FILE=".cache_$(basename "$CPP_FILE").json"
 
+# verifica se solicitou uma nova captura do json
+if [ "$REFRESH" -eq 1 ]; then
+	rm -f -- "$CACHE_FILE"
+fi
+
 # verifica se já existe o arquivo de cache (se não, faz a captura do JSON) 
-if [ ! -f "$CACHE_FILE" ]; then
-	# executa em segundo plano a abertura de porta, manda a mensagem de OK para o protocolo HTTP e insere no arquivo raw
-	( echo -e "HTTP/1.1 200 OK\r\n\r\n" | nc -l -p "$NC_PORT" > raw_json.tmp ) &
+if [ ! -s "$CACHE_FILE" ]; then
+	# cria a resposta http que o nc vai mandar pra extensão
+	printf 'HTTP/1.1 200 OK\r\n\r\n' > "$HTTP_RESPONSE"
+
+	# executa em segundo plano a abertura de porta, envia a resposta e insere a requisicao arquivo raw
+	nc -l -p "$NC_PORT" < "$HTTP_RESPONSE" > "$RAW_JSON" & 
 
 	# pega o PID do processo em segundo plano (o nc)
 	NC_PID="$!"
@@ -108,7 +141,7 @@ if [ ! -f "$CACHE_FILE" ]; then
 	loading='-\|/'
 	i=0
 
-	# se repete enquanto o processo existir (enquanto não receber o json do competitive companion)
+	# aguarda enquanto o netcat tiver em execução 
 	while kill -0 "$NC_PID" 2>/dev/null; do
 		i=$(( (i+1) % 4 ))
 		printf "\rAguardando envio do Competitive Companion na porta %s... %s"	"$NC_PORT" "${loading:$i:1}"
@@ -116,10 +149,26 @@ if [ ! -f "$CACHE_FILE" ]; then
 	done
 	printf "\rAguardando envio do Competitive Companion na porta %s... Concluído!\n" "$NC_PORT"
 
-	# guarda no arquivo de cache somente a partir do { (onde começa o json) 
-	sed -n '/^{/ p' raw_json.tmp > "$CACHE_FILE"
+	# aguarda a conclusão do netcat e verifica seu código de saída
+	if wait "$NC_PID"; then
+		NC_PID=""
+	else
+		NC_STATUS=$?
+		NC_PID=""
 
-	remove raw_json.tmp
+		echo -e "${RED}Erro ao receber os dados do Competitive Companion. Código: $NC_STATUS${RESET}" >&2
+		exit 1
+	fi
+
+	# guarda, no arquivo de cache, todo o conteúdo do json posterior à primeira linha que comece com {
+	sed -n '/^{/,$ p' "$RAW_JSON" > "$CACHE_FILE"
+
+	# verifica se capturou alguma coisa memso 
+	if [ ! -s "$CACHE_FILE" ]; then
+		echo -e "${RED}Erro: Nenhum JSON válido foi capturado.${RESET}" >&2
+		rm -f -- "$CACHE_FILE"
+        exit 1
+	fi
 else
 	echo -e "${BLUE}Cache encontrado para $(basename "$CPP_FILE"). Pulando captura da porta...${RESET}"
 fi
@@ -128,7 +177,7 @@ JSON_FILE=$(< "$CACHE_FILE")
 
 if [ -z "$JSON_FILE" ]; then
 	echo -e "${RED}Error: Nenhum dado válido capturado${RESET}" >&2
-	remove "$CACHE_FILE"
+	rm -f -- "$CACHE_FILE"
 	exit 1
 fi
 
@@ -158,8 +207,6 @@ fi
 TIME_LIMIT=$(echo -n "$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | sed 's/"timeLimit":\([0-9]*\)/\1/')
 
 echo -e "${WHITE}Problema: $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms${RESET}"
-
-remove
 
 # os comandos de dentro do awk não são interpretados pela bash
 echo "$JSON_FILE" | awk '
@@ -204,7 +251,6 @@ g++ -Wall -O2 "$CPP_FILE" -o exec_file 2> comp_error.tmp || {
 	echo -e "${RED}CE (Compilation Error)${RESET}" >&2
 	ERRO_COMPILACAO=$(head -n 1 comp_error.tmp | tr ',' ';')
 	register_log "CE" "Erro: $ERRO_COMPILACAO"
-	remove comp_error.tmp
 	exit 1
 }
 rm -f comp_error.tmp
@@ -265,5 +311,3 @@ if [ "$FULL_PASS" -eq 1 ]; then
 	echo -e "${BOLD_GREEN}Todos os testes locais passaram com sucesso!${RESET}"
 	register_log "AC Local" "Passou em todos os testes" 
 fi
-
-remove
