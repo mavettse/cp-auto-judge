@@ -88,25 +88,54 @@ listener on port `10044`. Open the problem in your browser and use
 Competitive Companion to send its data to the script. It then extracts
 the test cases, compiles the solution, and runs the tests.
 
-### Options
+------------------------------------------------------------------------
 
-  -----------------------------------------------------------------------
-  Option                              Description
-  ----------------------------------- -----------------------------------
-  `--refresh`                         Removes cached problem data and
-                                      waits for a new submission from
-                                      Competitive Companion.
+## Global Installation (Optional)
 
-  `--ac`                              Uses the problem data to identify
-                                      the problem and commits the source
-                                      file to the local Git repository.
-                                      Intended for solutions already
-                                      accepted by the online judge.
-  -----------------------------------------------------------------------
+By default, the script can be executed directly using its file path.
+However, it can also be added to the `PATH` to make it available as
+a global command, without keeping `judge.sh` in the same directory
+as the source files.
+
+On Linux, run the following commands from the directory containing
+the script:
+
+```bash
+chmod +x judge.sh
+mkdir -p ~/.local/bin
+ln -sfn "$(realpath judge.sh)" ~/.local/bin/judge
+```
+
+Make sure `~/.local/bin` is included in your `PATH`. For Bash users,
+if it is not already configured, run:
+
+``` bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+After configuration, the script can be executed from any directory:
+
+```bash
+judge solution.cpp
+judge --refresh solution.cpp
+judge --ac solution.cpp
+```
+
+The symbolic link points to the original file, so changes to
+`judge.sh` are automatically reflected. If the original file is
+moved or deleted, the symbolic link must be updated.
+
+------------------------------------------------------------------------
+
+## Options
+
+- `--refresh`: Removes the cached problem data and waits for a new submission from Competitive Companion.
+- `--ac`: Uses the cached problem data to identify the problem, then stages the source file and creates a commit in the local Git repository. Intended for solutions that have already been accepted by the online judge.
 
 Examples:
 
-``` bash
+```bash
 ./judge.sh --refresh solution.cpp
 ./judge.sh --ac solution.cpp
 ```
@@ -117,13 +146,13 @@ Examples:
 
 The script reports one of the following results for each test case:
 
-  Result   Meaning
-  -------- ------------------------------------------------------
-  `AC`     The test passed.
-  `WA`     The program output differs from the expected output.
-  `TLE`    The execution exceeded the time limit.
-  `RTE`    The program terminated with a runtime error.
-  `CE`     The C++ source file could not be compiled.
+| Result | Meaning |
+|---|---|
+| `AC` | The test passed. |
+| `WA` | The program output differs from the expected output. |
+| `TLE` | The execution exceeded the time limit. |
+| `RTE` | The program terminated with a runtime error. |
+| `CE` | The C++ source file could not be compiled. |
 
 Execution records are stored in `log.csv`, including the date, source
 file, result, and additional details when applicable.

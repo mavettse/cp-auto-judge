@@ -91,26 +91,58 @@ utilize o Competitive Companion para enviar os dados ao script. Em
 seguida, ele extrai os casos de teste, compila a solução e executa os
 testes.
 
-### Opções
+------------------------------------------------------------------------
 
-  -----------------------------------------------------------------------
-  Opção                               Descrição
-  ----------------------------------- -----------------------------------
-  `--refresh`                         Remove os dados armazenados em
-                                      cache e aguarda um novo envio do
-                                      Competitive Companion.
+## Instalação Global (Opcional)
 
-  `--ac`                              Utiliza os dados do problema para
-                                      identificá-lo e realiza o commit do
-                                      arquivo-fonte no repositório Git
-                                      local. Deve ser utilizada para
-                                      soluções já aceitas pelo juiz
-                                      online.
-  -----------------------------------------------------------------------
+Por padrão, o script pode ser executado diretamente pelo seu caminho.
+Entretanto, também é possível adicioná-lo ao `PATH` para utilizá-lo
+como um comando global, sem precisar manter `judge.sh` no mesmo
+diretório dos arquivos-fonte.
+
+No Linux, execute os comandos abaixo no diretório em que está
+localizado o script:
+
+```bash
+chmod +x judge.sh
+mkdir -p ~/.local/bin
+ln -sfn "$(realpath judge.sh)" ~/.local/bin/judge
+```
+
+Certifique-se de que ~/.local/bin esteja no PATH. Para usuários
+do Bash, caso ainda não esteja configurado, execute:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Após a configuração, o script poderá ser executado de qualquer diretório:
+
+```bash
+judge solution.cpp
+judge --refresh solution.cpp
+judge --ac solution.cpp
+```
+
+O link simbólico aponta para o arquivo original, portanto, alterações
+no judge.sh são refletidas automaticamente. Caso o arquivo original
+seja movido ou removido, será necessário atualizar o link.
+
+------------------------------------------------------------------------
+
+## Opções
+
+- `--refresh`: Remove os dados do problema armazenados em cache e 
+aguarda um novo envio do Competitive Companion.
+- `--ac`: Utiliza os dados em cache para identificar o problema e, em 
+seguida, adiciona o arquivo-fonte ao Git e cria um commit no 
+repositório local. Deve ser utilizada para soluções que já foram 
+aceitas pelo juiz online.
 
 Exemplos:
 
-``` bash
+```bash
 ./judge.sh --refresh solution.cpp
 ./judge.sh --ac solution.cpp
 ```
@@ -121,13 +153,13 @@ Exemplos:
 
 Para cada caso de teste, o script informa um dos seguintes resultados:
 
-  Resultado   Significado
-  ----------- -----------------------------------------------------
-  `AC`        O teste passou.
-  `WA`        A saída do programa é diferente da saída esperada.
-  `TLE`       O tempo limite de execução foi excedido.
-  `RTE`       O programa terminou com um erro durante a execução.
-  `CE`        Não foi possível compilar o arquivo-fonte em C++.
+| Resultado | Significado |
+|---|---|
+| `AC` | O teste passou. |
+| `WA` | A saída do programa é diferente da saída esperada. |
+| `TLE` | O tempo limite de execução foi excedido. |
+| `RTE` | O programa terminou com um erro durante a execução. |
+| `CE` | Não foi possível compilar o arquivo-fonte em C++. |
 
 Os registros das execuções são armazenados em `log.csv`, incluindo data,
 arquivo-fonte, resultado e informações adicionais, quando aplicável.
