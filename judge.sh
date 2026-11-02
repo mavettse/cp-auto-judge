@@ -324,11 +324,15 @@ for in_file in "${TEST_FILES[@]}"; do
 		FULL_PASS=0
 
 	else
+		# compara saídas ignorando diferenças de espaços em branco
+		diff_file="$TMP_DIR/diff${test_num}.txt"
+
 		# usa a flag -w pra ignorar diferencas de espacos em branco
-		if diff -w "$out_file" "$my_out" > /dev/null 2>&1; then
+		if diff -u -w --label "Saída esperada" --label "Sua saída" "$out_file" "$my_out" > "$diff_file"; then
 			echo -e "${GREEN}Passou (AC local)${RESET}"
 		else
 			echo -e "${RED}WA (Wrong Answer)${RESET}"
+			cat "$diff_file"
 			register_log "WA" "Falha no Teste $test_num"
 			FULL_PASS=0
 		fi
