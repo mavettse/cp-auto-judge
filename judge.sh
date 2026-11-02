@@ -106,7 +106,7 @@ cleanup(){
 		wait "$NC_PID" 2>/dev/null || true
 	fi
 
-	# 	 o diretório temporario
+	# remove o diretório temporario
 	rm -rf -- "$TMP_DIR" 2>/dev/null || true
 }
 
@@ -149,7 +149,7 @@ if [ ! -s "$CACHE_FILE" ]; then
 	done
 	printf "\rAguardando envio do Competitive Companion na porta %s... Concluído!\n" "$NC_PORT"
 
-	# aguarda a conclusão do netcat e verifica seu código de saída
+	# recupera o código de saída do processo netcat 
 	if wait "$NC_PID"; then
 		NC_PID=""
 	else
@@ -204,7 +204,7 @@ fi
 # ---------------------------
 # PARSING DOS DADOS RESTANTES
 # ---------------------------
-TIME_LIMIT=$(echo -n "$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | sed 's/"timeLimit":\([0-9]*\)/\1/')
+TIME_LIMIT=$(printf '%s\n' "$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | head -n 1 | sed 's/"timeLimit":\([0-9]*\)/\1/')
 
 echo -e "${WHITE}Problema: $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms${RESET}"
 
@@ -224,8 +224,8 @@ NR > 1 {
 	gsub(/\\n/, "\n", out_str)
 
 	# define os nomes e redireciona as saídas para os ficheiros
-	file_in = "tmp_dir" "/in" (NR-1) ".txt"
-	file_out = "tmp_dir" "/out" (NR-1) ".txt"
+	file_in = tmp_dir "/in" (NR-1) ".txt"
+	file_out = tmp_dir "/out" (NR-1) ".txt"
 
 	# grava os conteúdos sem adicinoar uma quebra de linha extra
 	printf "%s", in_str > file_in
@@ -255,13 +255,12 @@ fi
 echo -e "${YELLOW}Iniciando a compilação do arquivo: $CPP_FILE...${RESET}"
 
 # manda o erro de compilação (se houver) para o arquivo temporário comp_error.tmp
-g++ -Wall -O2 "$CPP_FILE" -o exec_file 2> comp_error.tmp || { 
+g++ -Wall -O2 "$CPP_FILE" -o "$EXEC_FILE" 2> "$COMP_ERROR" || { 
 	echo -e "${RED}CE (Compilation Error)${RESET}" >&2
-	ERRO_COMPILACAO=$(head -n 1 comp_error.tmp | tr ',' ';')
-	register_log "CE" "Erro: $ERRO_COMPILACAO"
+	COMP_ERROR_MSG=$(head -n 1 "$COMP_ERROR" | tr ',' ';')
+	register_log "CE" "Erro: $COMP_ERROR_MSG"
 	exit 1
 }
-rm -f comp_error.tmp
 
 echo -e "${YELLOW}Rodando testes locais...${RESET}"
 
@@ -271,22 +270,22 @@ TIME_SEC=$(printf '%d.%03d' "$((TIME_LIMIT / 1000))" "$((TIME_LIMIT % 1000))")
 FULL_PASS=1
 
 # itera sobre todos os ficheiros de entrada
-for in_file in in*.txt; do
-	# se o arquivo não existir, interrompe o laço
-	# sem isso, se nao tiver nenhum arquivo de entrada, a shell nao vai expandir o in*.txt e vai tratar isso como o arquivo literal
-	[ -e "$in_file" ] || break
-
-	# remove o prefixo in e o sufixo .txt pra pegar só o numero
-	test_num="${in_file#in}"
+for in_file in "${TEST_FILES[@]}"; do
+	# remove o caminho do diretório e o prefixo in e o sufixo .txt pra pegar só o numero do teste
+	test_num="${in_file##*/}"
+	test_num="${test_num#in}"
 	test_num="${test_num%.txt}"
 
-	out_file="out${test_num}.txt"
-	my_out="my_out${test_num}.txt"
+	out_file="$TMP_DIR/out${test_num}.txt"
+	my_out="$TMP_DIR/my_out${test_num}.txt"
+	run_error="$TMP_DIR/run_error${test_num}.txt"
 
-	# executa o binário controlando o tempo e armazena a saída
+	# executa o binário controlando o tempo e armazena a saída de erro
 	# timeout dentro do condicional porque a flag -e fecha o programa se um processo retornar falha
-	# joga a eventual saída de erro do RTE no bit bucket
-	if timeout -k 1s "${TIME_SEC}s" ./exec_file < "$in_file" > "$my_out" 2> /dev/null; then
+	# precisa de dois comandos entre parenteses porque a shell não cria uma subshell se tiver somente um comando
+	# subshell necessário para não imprimir saída de erro da bash no terminal 
+	# se o timeout falhar, a subshell vai executar o exit e entregar o mesmo código de erro para o script
+	if ( timeout -k 1s "${TIME_SEC}s" "$EXEC_FILE" < "$in_file" > "$my_out" || exit "$?" ) 2> "$run_error"; then
 		exit_code=0
 	else
 		# pega o código de saída do binário ou do terminal quando não dá RTE
@@ -295,14 +294,35 @@ for in_file in in*.txt; do
 
 	echo -n "Teste $test_num: "
 
-	if [ "$exit_code" -eq 124 ]; then
+	# 137 também é considerado TLE pois pode ocorrer quando o timeout precisa utilizar o sinal sigkill depois do tempo adicional
+	if [ "$exit_code" -eq 124 ] || [ "$exit_code" -eq 137 ]; then
 		echo -e "${RED}TLE (Time Limit Exceeded)${RESET}"
 		register_log "TLE" "Falha no Teste $test_num"
 		FULL_PASS=0
+
+	# mensagens de erro referentes à ferramenta, e não ao RTE ou ao AC
+	elif [ "$exit_code" -eq 125 ] ||  [ "$exit_code" -eq 126 ] ||  [ "$exit_code" -eq 127 ]; then
+		echo -e "${RED}Erro interno na execução do timeout ou do executável.${RESET}"
+ 
+		# exibe as eventuais mensagens de erro 
+		if [ -s "$run_error" ]; then
+			cat "$run_error" >&2
+		fi
+
+		register_log "ERRO" "Falha interna na execução do teste $test_num"
+		exit 1
+	
 	elif [ "$exit_code" -ne 0 ]; then
 		echo -e "${RED}RTE (Runtime Error)${RESET}"
+		
+		# exibe as eventuais mensagens de erro 
+		if [ -s "$run_error" ]; then
+			sed -n '1p' "$run_error" >&2
+		fi
+
 		register_log "RTE" "Falha no Teste $test_num"
 		FULL_PASS=0
+
 	else
 		# usa a flag -w pra ignorar diferencas de espacos em branco
 		if diff -w "$out_file" "$my_out" > /dev/null 2>&1; then
