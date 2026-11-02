@@ -327,7 +327,7 @@ for in_file in "${TEST_FILES[@]}"; do
 		# compara saídas ignorando diferenças de espaços em branco
 		diff_file="$TMP_DIR/diff${test_num}.txt"
 
-		# usa a flag -w pra ignorar diferencas de espacos em branco
+		# flag -w pra ignorar espacos em branco, -u pra unificar as saídas, --label pra alterar o nome do cabeçalho
 		if diff -u -w --label "Saída esperada" --label "Sua saída" "$out_file" "$my_out" > "$diff_file"; then
 			echo -e "${GREEN}Passou (AC local)${RESET}"
 		else
