@@ -27,17 +27,30 @@ RESET='\033[0m'
 # -------------------------
 # FUNÇÃO DE INSERÇÃO DO LOG
 # -------------------------
+# função auxiliar para manter o formato do arquivo csv, duplicando as aspas duplas e fazendo com que cada coluna esteja entre aspas duplas, o que evita separação indevida entre colunas 
+csv_escape() {
+	local value="${1:-}"
+	value="${value//\"/\"\"}"
+	printf '"%s"' "$value"
+}
+
 register_log() {
 	local status="$1"
 	local detail="${2:-}"
 	local cur_date=$(date "+%d-%m-%Y %H:%M:%S")
-	local base_name=$(basename "$CPP_FILE")
+	local base_name=$(basename -- "$CPP_FILE")
 
-	if [ -n "$detail" ]; then
-		echo "$cur_date,$base_name,$status,$detail" >> "$LOG_FILE"
-	else
-		echo "$cur_date,$base_name,$status" >> "$LOG_FILE"
-	fi
+	# mantém sempre 4 colunas, mesmo quando não tem detalhes
+	{
+		csv_escape "$cur_date"
+		printf ','
+		csv_escape "$base_name"
+		printf ','
+		csv_escape "$status"
+		printf ','
+		csv_escape "$detail"
+		printf '\n'
+	} >> "$LOG_FILE"
 }
 
 
@@ -76,10 +89,37 @@ if [ -z "$CPP_FILE" ]; then
 	exit 1
 fi
 
-# cria o arquivo de log, se ele não existir
-if [ ! -f "$LOG_FILE" ]; then
-	touch "$LOG_FILE"
+# checa se o arquivo existe e é uma arquivo regular
+if [ ! -f "$CPP_FILE" ]; then
+    echo "Erro: Arquivo '$CPP_FILE' não encontrado." >&2
+    exit 1
 fi
+
+# verifica se a pasta atual contém um repositório git quando a flag --ac é acionada
+if [ "$AC_MODE" -eq 1 ]; then
+	if ! command -v git >/dev/null 2>&1; then
+		echo -e "${RED}Erro: Git não está instalado ou não está disponível no PATH.${RESET}" >&2
+		exit 1
+	fi
+
+	if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+		echo -e "${RED}Erro: o modo --ac deve ser executado dentro de um repositório Git.${RESET}" >&2
+		exit 1
+	fi
+fi
+
+# cria o arquivo de log e seu cabeçalho, caso esteja vazio ou não exista
+if [ ! -s "$LOG_FILE" ]; then
+	printf '"data","arquivo","resultado","detalhes"\n' > "$LOG_FILE"
+fi
+
+# verifica se todos os comandos necessários para o script existem na maquina
+for cmd in nc g++ timeout diff awk sed grep; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Erro: Dependência '$cmd' não encontrada." >&2
+        exit 1
+    fi
+done
 
 
 # -------------------------------
@@ -191,7 +231,7 @@ PROBLEM_NAME=$(echo "$JSON_FILE" | grep -o '"name":"[^"]*' | head -n 1 | sed 's/
 # IMPLEMENTAÇÃO NO GIT
 # --------------------
 if [ "$AC_MODE" -eq 1 ]; then
-	echo -e "${GRAY}Modo AC ativado. Efetuando o commit no GitHub...${RESET}"
+	echo -e "${GRAY}Modo AC ativado. Efetuando o commit no repositório Git local...${RESET}"
 	git add "$CPP_FILE"
 	git commit "$CPP_FILE" -m "$(basename "$CPP_FILE") - $PROBLEM_NAME"
 
@@ -257,7 +297,7 @@ echo -e "${YELLOW}Iniciando a compilação do arquivo: $CPP_FILE...${RESET}"
 # manda o erro de compilação (se houver) para o arquivo temporário comp_error.tmp
 g++ -Wall -O2 "$CPP_FILE" -o "$EXEC_FILE" 2> "$COMP_ERROR" || { 
 	echo -e "${RED}CE (Compilation Error)${RESET}" >&2
-	COMP_ERROR_MSG=$(head -n 1 "$COMP_ERROR" | tr ',' ';')
+	COMP_ERROR_MSG=$(head -n 1 "$COMP_ERROR")
 	register_log "CE" "Erro: $COMP_ERROR_MSG"
 	exit 1
 }
@@ -331,15 +371,29 @@ for in_file in "${TEST_FILES[@]}"; do
 		if diff -u -w --label "Saída esperada" --label "Sua saída" "$out_file" "$my_out" > "$diff_file"; then
 			echo -e "${GREEN}Passou (AC local)${RESET}"
 		else
-			echo -e "${RED}WA (Wrong Answer)${RESET}"
-			cat "$diff_file"
-			register_log "WA" "Falha no Teste $test_num"
-			FULL_PASS=0
+			# diff retorna 0 (arquivos iguais), 1 (arquivos diferentes) e 2 (erro na comparacao)
+			DIFF_STATUS=$?
+
+			# para evitar que erro na comparação seja tratado como WA, usa o condicional
+			if [ "$DIFF_STATUS" -eq 1 ]; then
+				echo -e "${RED}WA (Wrong Answer)${RESET}"
+				cat "$diff_file"
+				register_log "WA" "Falha no Teste $test_num"
+				FULL_PASS=0
+			else
+				echo -e "${RED}Erro interno durante a comparação.${RESET}" >&2
+				exit 1
+			fi
+
 		fi
 	fi
 done
 
 if [ "$FULL_PASS" -eq 1 ]; then
 	echo -e "${BOLD_GREEN}Todos os testes locais passaram com sucesso!${RESET}"
-	register_log "AC Local" "Passou em todos os testes" 
+	register_log "AC Local" "Passou em todos os testes"
+	exit 0;
+else 
+	echo -e "${RED}Um ou mais testes falharam.${RESET}"
+	exit 1;
 fi
