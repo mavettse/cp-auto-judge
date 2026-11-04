@@ -37,8 +37,10 @@ csv_escape() {
 register_log() {
 	local status="$1"
 	local detail="${2:-}"
-	local cur_date=$(date "+%d-%m-%Y %H:%M:%S")
-	local base_name=$(basename -- "$CPP_FILE")
+	local cur_date
+	local base_name
+	cur_date=$(date "+%d-%m-%Y %H:%M:%S")
+	base_name=$(basename -- "$CPP_FILE")
 
 	# mantém sempre 4 colunas, mesmo quando não tem detalhes
 	{
