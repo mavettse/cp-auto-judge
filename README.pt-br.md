@@ -26,7 +26,7 @@ O script automatiza parte do fluxo de trabalho local da programação competitiv
 ## Funcionalidades
 
 - **Obtenção automática dos testes:** recebe os casos de teste por meio de uma porta local aberta com Netcat.
-- **Parsing dos dados:** utiliza `awk`, `sed` e `grep` para extrair as informações necessárias do JSON recebido.
+- **Parsing dos dados:** utiliza o `jq` para extrair o nome do problema, o limite de tempo e os casos de teste do JSON recebido, e verifica se o conteúdo é um JSON válido antes de utilizá-lo (um cache inválido é descartado). O `sed` é usado apenas para remover o cabeçalho HTTP da requisição.
 - **Cache dos casos de teste:** armazena os dados recebidos em um arquivo JSON para evitar uma nova captura a cada execução.
 - **Compilação em C++:** compila o arquivo-fonte utilizando `g++`, com as opções `-Wall` e `-O2`.
 - **Controle do limite de tempo:** limita o tempo de execução de cada teste com `timeout`.
@@ -44,7 +44,7 @@ Desenvolvido para execução em ambiente Linux.
 - **Shell:** Bash
 - **Compilador:** `g++`
 - **Extensão de navegador:** [Competitive Companion](https://github.com/jmerle/competitive-companion)
-- **Utilitários:** `nc` (Netcat), `timeout`, `diff`, `awk`, `sed`, `grep` e utilitários padrão do Linux.
+- **Utilitários:** `nc` (Netcat), `timeout`, `diff`, `sed`, `jq` e utilitários padrão do Linux.
 - **Versionamento:** Git (necessário apenas para utilizar a opção `--ac`).
 
 Para utilizar a integração com Git, execute o script dentro de um repositório Git.
@@ -67,7 +67,7 @@ Execute-o informando o arquivo-fonte em C++:
 
 Quando não há dados em cache para aquele arquivo, o script abre uma porta de escuta local na porta `10044`. Abra o problema no navegador e utilize o Competitive Companion para enviar os dados ao script.
 
-Em seguida, o programa extrai os casos de teste, compila a solução e executa os testes.
+Em seguida, utiliza `git add` no arquivo-fonte informado e cria um commit cuja mensagem segue o formato `ID - nome do problema`, em que o ID é o nome do arquivo-fonte sem a extensão. Por exemplo, para `1001.cpp` e um problema chamado `Extremely Basic`, a mensagem do commit será `1001 - Extremely Basic`.
 
 **Observação:** certifique-se de que a porta `10044` esteja disponível no ambiente de execução.
 
@@ -198,7 +198,6 @@ Em seguida, utiliza `git add` no arquivo-fonte informado e cria um commit cuja m
 
 ## Limitações Conhecidas
 
-- **Parsing do JSON:** a interpretação dos dados é realizada com ferramentas tradicionais de processamento de texto, como `awk`, `sed` e `grep`. A implementação considera o formato de dados normalmente recebido do Competitive Companion, mas não constitui um parser JSON completo e pode não interpretar corretamente todas as sequências de escape previstas pelo formato.
 - **Comparação de saídas:** a opção `diff -w` ignora diferenças em espaços em branco. Isso é adequado para a comparação usual de respostas em programação competitiva, mas pode não ser apropriado para problemas em que os espaços façam parte do conteúdo esperado.
 - **Limite de recursos:** o script controla o tempo de execução de cada teste, mas não implementa um limite de consumo de memória.
 - **Cache:** os arquivos de cache utilizam o nome do arquivo-fonte como identificador. Arquivos com o mesmo nome, utilizados no mesmo diretório de trabalho, podem compartilhar o mesmo cache.

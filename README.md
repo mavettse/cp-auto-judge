@@ -26,7 +26,7 @@ The script automates part of the local competitive programming workflow: it rece
 ## Features
 
 - **Automatic test retrieval:** receives test cases through a local port opened with Netcat.
-- **Data parsing:** uses `awk`, `sed`, and `grep` to extract the necessary information from the received JSON.
+- **Data parsing:** uses `jq` to extract the problem name, time limit, and test cases from the received JSON, and checks that the content is valid JSON before using it (an invalid cache is discarded). `sed` is only used to remove the HTTP header from the request.
 - **Test case cache:** stores the received data in a JSON file to avoid fetching it again on every run.
 - **C++ compilation:** compiles the source file using `g++`, with the `-Wall` and `-O2` options.
 - **Time limit control:** limits the execution time of each test with `timeout`.
@@ -44,7 +44,7 @@ Developed for execution in a Linux environment.
 - **Shell:** Bash
 - **Compiler:** `g++`
 - **Browser extension:** [Competitive Companion](https://github.com/jmerle/competitive-companion)
-- **Utilities:** `nc` (Netcat), `timeout`, `diff`, `awk`, `sed`, `grep`, and standard Linux utilities.
+- **Utilities:** `nc` (Netcat), `timeout`, `diff`, `sed`, `jq`, and standard Linux utilities.
 - **Version control:** Git (needed only to use the `--ac` option).
 
 To use the Git integration, run the script inside a Git repository.
@@ -187,7 +187,7 @@ The `--ac` option should be used for solutions that have already been accepted b
 
 Before committing, the script checks whether Git is available and whether the current working directory belongs to a Git repository.
 
-It then uses `git add` on the given source file and creates a commit whose message includes the file name and the problem name.
+It then uses `git add` on the given source file and creates a commit whose message follows the format `ID - problem name`, where the ID is the source file name without its extension. For example, for `1001.cpp` and a problem named `Extremely Basic`, the commit message is `1001 - Extremely Basic`.
 
 **Notes:**
 
@@ -198,7 +198,6 @@ It then uses `git add` on the given source file and creates a commit whose messa
 
 ## Known Limitations
 
-- **JSON parsing:** data interpretation is performed with traditional text processing tools such as `awk`, `sed`, and `grep`. The implementation considers the data format normally received from Competitive Companion, but it is not a complete JSON parser and may not correctly interpret all escape sequences provided by the format.
 - **Output comparison:** the `diff -w` option ignores whitespace differences. This is suitable for the usual answer comparison in competitive programming, but may not be appropriate for problems where whitespace is part of the expected content.
 - **Resource limits:** the script controls the execution time of each test, but does not implement a memory consumption limit.
 - **Cache:** cache files use the source file name as an identifier. Files with the same name, used in the same working directory, may share the same cache.
