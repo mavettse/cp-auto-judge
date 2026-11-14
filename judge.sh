@@ -116,7 +116,7 @@ if [ ! -s "$LOG_FILE" ]; then
 fi
 
 # verifica se todos os comandos necessários para o script existem na maquina
-for cmd in nc g++ timeout diff awk sed grep; do
+for cmd in nc g++ timeout diff sed jq; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "Erro: Dependência '$cmd' não encontrada." >&2
         exit 1
@@ -223,19 +223,31 @@ if [ -z "$JSON_FILE" ]; then
 	exit 1
 fi
 
+# garante que o conteúdo capturado é um JSON bem formado; se não for, descarta o cache
+if ! jq -e . <<< "$JSON_FILE" >/dev/null 2>&1; then
+	echo -e "${RED}Erro: o conteúdo capturado não é um JSON válido.${RESET}" >&2
+	rm -f -- "$CACHE_FILE"
+	exit 1
+fi
 
 # ---------------
 # PARSING DO NOME
 # ---------------
-PROBLEM_NAME=$(echo "$JSON_FILE" | grep -o '"name":"[^"]*' | head -n 1 | sed 's/"name":"//')
+PROBLEM_NAME=$(jq -r '.name // empty' <<< "$JSON_FILE")
 
 # --------------------
 # IMPLEMENTAÇÃO NO GIT
 # --------------------
+
 if [ "$AC_MODE" -eq 1 ]; then
 	echo -e "${GRAY}Modo AC ativado. Efetuando o commit no repositório Git local...${RESET}"
+	
+	# Corrige o ID do exercício para commitar sem a extensão do código-fonte
+	PROBLEM_ID=$(basename -- "$CPP_FILE")
+	PROBLEM_ID="${PROBLEM_ID%.*}"
+
 	git add "$CPP_FILE"
-	git commit "$CPP_FILE" -m "$(basename "$CPP_FILE") - $PROBLEM_NAME"
+	git commit "$CPP_FILE" -m "$PROBLEM_ID - $PROBLEM_NAME"
 
 	register_log "AC (Accepted)" "Submissao direta"
 	echo -e "${BOLD_GREEN}Código inserido no repositório e registrado no log.${RESET}"
@@ -246,33 +258,18 @@ fi
 # ---------------------------
 # PARSING DOS DADOS RESTANTES
 # ---------------------------
-TIME_LIMIT=$(printf '%s\n' "$JSON_FILE" | sed 's/,/\n/g' | grep '"timeLimit":' | head -n 1 | sed 's/"timeLimit":\([0-9]*\)/\1/')
+TIME_LIMIT=$(jq -r '.timeLimit' <<< "$JSON_FILE")
 
 echo -e "${WHITE}Problema: $PROBLEM_NAME | Tempo Limite: ${TIME_LIMIT}ms${RESET}"
 
-# os comandos de dentro do awk não são interpretados pela bash
-printf '%s' "$JSON_FILE" | awk -v tmp_dir="$TMP_DIR" '
+# quantidade de testes no JSON (.tests é um array de objetos {input, output})
+JSON_TESTS_COUNT=$(jq '.tests | length' <<< "$JSON_FILE")
 
-# usa o RS para separar os testes e o FS para separar a entrada e a saída de cada teste
-BEGIN { RS="\"input\":\""; FS="\",\"output\":\"" }
-
-NR > 1 {
-	in_str = $1
-	split ($2, arr, "\"")
-	out_str = arr[1]
-
-	# substitui os caracteres \n por quebras de linhas de verdade
-	gsub(/\\n/, "\n", in_str)
-	gsub(/\\n/, "\n", out_str)
-
-	# define os nomes e redireciona as saídas para os ficheiros
-	file_in = tmp_dir "/in" (NR-1) ".txt"
-	file_out = tmp_dir "/out" (NR-1) ".txt"
-
-	# grava os conteúdos sem adicinoar uma quebra de linha extra
-	printf "%s", in_str > file_in
-	printf "%s", out_str > file_out
-}'
+for (( i = 0; i < JSON_TESTS_COUNT; i++ )); do
+	# -j imprime a string já decodificada (\n vira quebra de linha real) e sem newline extra no final
+	jq -j --argjson idx "$i" '.tests[$idx].input'  <<< "$JSON_FILE" > "$TMP_DIR/in$((i + 1)).txt"
+	jq -j --argjson idx "$i" '.tests[$idx].output' <<< "$JSON_FILE" > "$TMP_DIR/out$((i + 1)).txt"
+done
 
 # se a expansão não existir, expande pro vazio ao invés de para a string literal
 shopt -s nullglob
